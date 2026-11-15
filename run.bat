@@ -60,7 +60,7 @@ echo       * Runs entirely on local machine (requires PyTorch and local weights)
 echo.
 echo   [3] Pre-download Local Models (k2-fsa/OmniVoice and Whisper)
 echo.
-echo   [4] Reinstall / Update All Requirements
+echo   [4] Install Local Offline PyTorch Dependencies (Optional - 3GB download)
 echo.
 
 set /p CHOICE="Enter choice [1-4] (default is 1): "
@@ -104,10 +104,13 @@ if "%CHOICE%"=="3" (
 
 if "%CHOICE%"=="4" (
     echo.
-    echo [*] Installing dependencies from requirements.txt...
-    %PY_CMD% -m pip install --upgrade -r requirements.txt
+    echo [*] Installing local offline PyTorch dependencies...
+    %PY_CMD% -m pip install -r requirements-local.txt
     echo.
     echo [*] Done!
+    pause
+    exit /b 0
+)
     pause
     exit /b 0
 )
