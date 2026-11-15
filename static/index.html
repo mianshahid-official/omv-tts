@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniVoice Studio - Local Neural Speech & Zero-Shot Cloning</title>
+  <meta name="description" content="Local neural speech synthesis powered by k2-fsa/OmniVoice with live subtitles, sample audition, and 3-file download (.mp3, .json, .srt).">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600;700&family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- =========================================================================
+       GLOBAL HEADER & LOCAL ENGINE STATUS
+       ========================================================================= -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo-group">
+        <div class="logo-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-text">OmniVoice</div>
+          <span class="logo-badge">Local Studio</span>
+        </div>
+      </div>
+
+      <!-- Local Neural Engine Status Monitor -->
+      <div class="engine-gateway-bar">
+        <div id="engine-status-pill" class="engine-status-pill" title="k2-fsa/OmniVoice Neural Speech Engine">
+          <span id="engine-status-dot" class="status-pulse-dot ready"></span>
+          <span id="engine-status-text" class="engine-status-text">OmniVoice Local Engine Ready</span>
+          <span id="engine-hardware-badge" class="engine-hw-badge">CPU FP32</span>
+        </div>
+      </div>
+
+      <!-- Header Actions & Stats -->
+      <div class="header-stats">
+        <button type="button" id="btn-toggle-history" class="btn-header-action" onclick="toggleHistoryDrawer()" title="View Recent Conversions">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+          <span>History</span>
+        </button>
+        <span class="stat-pill"><strong id="stat-voice-count">87</strong> Local Presets</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       MAIN SPLIT STUDIO WORKSPACE
+       ========================================================================= -->
+  <main class="studio-container" id="studio-container">
+    
+    <!-- LEFT PANEL: LOCAL VOICE CATALOG & AUDITION -->
+    <aside class="voice-catalog-panel" id="voice-catalog-panel">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">Voice Catalog & Audition</h2>
+          <p class="panel-subtitle">Audition local audio samples before finalizing your narrator.</p>
+        </div>
+        <button type="button" class="btn-clone-trigger" id="btn-open-clone-modal" onclick="openCloneVoiceModal()" title="Clone any new voice from an audio sample">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+          <span>+ Clone Voice</span>
+        </button>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="category-tabs">
+        <button class="cat-tab active" data-cat="all" onclick="filterCategory('all')">All</button>
+        <button class="cat-tab" data-cat="cloned" onclick="filterCategory('cloned')">✨ Cloned / Custom</button>
+        <button class="cat-tab" data-cat="history" onclick="filterCategory('history')">History / Stories</button>
+        <button class="cat-tab" data-cat="famous" onclick="filterCategory('famous')">Famous</button>
+        <button class="cat-tab" data-cat="youtube" onclick="filterCategory('youtube')">YouTube / Creator</button>
+        <button class="cat-tab" data-cat="kids" onclick="filterCategory('kids')">Kids / Anime</button>
+        <button class="cat-tab" data-cat="multilingual" onclick="filterCategory('multilingual')">Languages</button>
+      </div>
+
+      <!-- Search Box & Language Filter -->
+      <div class="catalog-search-row">
+        <div class="search-input-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
+          <input type="text" id="voice-search-input" class="search-input" placeholder="Search voices, narrators, styles..." oninput="renderVoiceList()">
+        </div>
+        <select id="voice-lang-filter" class="lang-select" onchange="renderVoiceList()">
+          <option value="all">All Langs</option>
+          <option value="en">English (en)</option>
+          <option value="es">Spanish (es)</option>
+          <option value="hi">Hindi (hi)</option>
+          <option value="fr">French (fr)</option>
+          <option value="ur">Urdu (ur)</option>
+          <option value="de">German (de)</option>
+        </select>
+      </div>
+
+      <!-- Scrollable Voice Cards List -->
+      <div id="voices-list" class="voices-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </aside>
+
+    <!-- DRAGGABLE COLUMN RESIZE SPLITTER -->
+    <div class="studio-resizer" id="studio-resizer" title="Drag to resize voice catalog and studio columns">
+      <div class="resizer-knob"></div>
+    </div>
+
+    <!-- RIGHT PANEL: UNIFIED SCRIPT STUDIO & CONTROLS -->
+    <section class="script-studio-panel" id="script-studio-panel">
+      
+      <!-- UNIFIED MASTER STUDIO CARD (Narrator + Text Editor + Settings + Synthesize) -->
+      <div class="unified-studio-card">
+        
+        <!-- SECTION 1: Selected Narrator Top Bar -->
+        <div class="unified-narrator-bar" id="selected-narrator-banner">
+          <div class="narrator-avatar-wrap">
+            <img id="sel-narrator-avatar" src="/presets/avatars/narrator-deep-en.svg" alt="Selected Narrator" onerror="this.src='/presets/avatars/narrator-deep-en.svg'">
+            <span class="active-badge">✓ Active</span>
+          </div>
+          <div class="narrator-meta">
+            <div class="narrator-tag-row">
+              <span id="sel-narrator-type" class="pill-type">Voice Design</span>
+              <span id="sel-narrator-lang" class="pill-lang">EN</span>
+              <span id="sel-narrator-gender" class="pill-gender">Male</span>
+            </div>
+            <h3 id="sel-narrator-name" class="narrator-name">Narrator Deep (English)</h3>
+            <p id="sel-narrator-desc" class="narrator-desc">Deep authoritative male narration for audiobooks and documentaries.</p>
+          </div>
+          <div class="audition-current-btn-wrap">
+            <button type="button" id="btn-audition-selected" class="btn-audition" onclick="auditionSelectedVoice()">
+              <svg id="icon-audition-selected" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span id="label-audition-selected">Play Sample</span>
+            </button>
+            <button type="button" class="btn-hero-clone" onclick="openCloneVoiceModal()" title="Clone another custom voice">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Clone Voice</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Integrated Script Text Editor -->
+        <div class="unified-editor-area">
+          <div class="editor-head">
+            <label class="editor-label" for="tts-text-input">Script / Narration Text</label>
+            <div class="editor-tools">
+              <button type="button" class="btn-tool" onclick="insertSampleText('history')">📜 History Story</button>
+              <button type="button" class="btn-tool" onclick="insertSampleText('tech')">💡 Tech Review</button>
+              <button type="button" class="btn-tool" onclick="insertSampleText('youtube')">🎬 YouTube Hook</button>
+              <button type="button" class="btn-tool highlight" onclick="openDictationModal()" title="Transcribe an audio file or microphone clip directly into the editor">🎙️ Transcribe / Dictate</button>
+              <button type="button" class="btn-tool highlight" onclick="openVoiceDesignModal()" title="Design a custom voice using descriptive traits">✨ Design Voice</button>
+            </div>
+          </div>
+          <textarea id="tts-text-input" class="script-textarea" rows="4" placeholder="Paste or type your script here. The selected narrator will speak these exact words with high-fidelity flow-matching on your local OmniVoice model..."></textarea>
+          
+          <div class="editor-footer">
+            <span id="text-counter" class="text-counter">0 characters · 0 words</span>
+            <span class="unlimited-badge">⚡ 100% Fully Local Neural Inference</span>
+          </div>
+        </div>
+
+        <!-- SECTION 3: Integrated Settings & Action Bar -->
+        <div class="unified-settings-bar">
+          <div class="unified-settings-controls">
+            <div class="setting-item">
+              <div class="setting-label-row">
+                <label class="setting-label">Speaking Speed</label>
+                <span id="val-speed" class="setting-val">1.0x</span>
+              </div>
+              <input type="range" id="slider-speed" class="slider" min="70" max="140" value="100" step="5" oninput="updateSpeedLabel(this.value)">
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-label-row">
+                <label class="setting-label">Pitch Tuning</label>
+                <span id="val-pitch" class="setting-val">0Hz</span>
+              </div>
+              <input type="range" id="slider-pitch" class="slider" min="-10" max="10" value="0" step="1" oninput="updatePitchLabel(this.value)">
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-label-row">
+                <label class="setting-label">Quality / Steps</label>
+                <span id="val-steps" class="setting-val">12 steps</span>
+              </div>
+              <select id="select-steps" class="setting-select" onchange="updateStepsLabel(this.value)">
+                <option value="8">⚡ Fast (8 steps · ~15s Preview)</option>
+                <option value="12" selected>⚖️ Balanced (12 steps · Default)</option>
+                <option value="20">💎 Studio (20 steps · Master)</option>
+              </select>
+            </div>
+
+            <div class="setting-item lang-item">
+              <div class="setting-label-row">
+                <label class="setting-label">Language</label>
+              </div>
+              <select id="select-lang" class="setting-select">
+                <option value="en">English (en)</option>
+                <option value="es">Spanish (es)</option>
+                <option value="hi">Hindi (hi)</option>
+                <option value="fr">French (fr)</option>
+                <option value="ur">Urdu (ur)</option>
+                <option value="de">German (de)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="unified-action-wrap">
+            <button type="button" id="btn-convert-local" class="btn-convert-local" onclick="startLocalConversion()">
+              <span class="btn-icon">⚡</span>
+              <span id="btn-convert-text">Synthesize Speech (Local OmniVoice)</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Real-Time Progress Dashboard -->
+      <div id="progress-box" class="progress-box" style="display:none;">
+        <div class="progress-box-header">
+          <div class="progress-stage-meta">
+            <div class="spinner-ring">
+              <svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.15)"></circle>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--primary)"></path>
+              </svg>
+            </div>
+            <div>
+              <div class="stage-title-wrap">
+                <span id="progress-stage-title" class="progress-stage-title">Executing Local OmniVoice Diffusion...</span>
+                <span id="progress-step-pill" class="step-pill">Local Engine</span>
+              </div>
+              <div id="progress-detail-text" class="progress-detail-text">Conditioning acoustic latents and generating audio...</div>
+            </div>
+          </div>
+          <div class="progress-counter-wrap">
+            <span id="progress-percent" class="progress-pct">0%</span>
+            <span id="progress-timer" class="progress-timer">⏱️ 0.0s</span>
+          </div>
+        </div>
+
+        <div class="progress-track">
+          <div id="progress-bar-fill" class="progress-fill" style="width: 0%;">
+            <span class="shimmer-effect"></span>
+          </div>
+        </div>
+
+        <!-- Visual Milestone Pipeline -->
+        <div class="pipeline-milestones">
+          <div id="step-connect" class="pipe-step completed">
+            <span>⚙️ Engine Ready</span>
+          </div>
+          <div id="step-diffuse" class="pipe-step">
+            <span>⚡ Neural Diffusion</span>
+          </div>
+          <div id="step-mp3" class="pipe-step">
+            <span>🎵 Master MP3</span>
+          </div>
+          <div id="step-srt" class="pipe-step">
+            <span>📜 SRT Subtitles</span>
+          </div>
+          <div id="step-json" class="pipe-step">
+            <span>📊 JSON Timestamps</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dedicated 4-File Result Card -->
+      <div id="result-card" class="result-card" style="display:none;">
+        <div class="result-header">
+          <div class="result-success-icon">✓</div>
+          <div>
+            <h4 class="result-title">Conversion Complete! 4 Broadcast Files Generated Locally</h4>
+            <div id="result-folder-path" class="result-folder-path">output/speech_folder</div>
+          </div>
+          <button type="button" class="btn-open-folder" onclick="openOutputFolder()" title="Open Folder in Windows File Explorer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>Open in Explorer</span>
+          </button>
+        </div>
+
+        <div class="result-files-grid">
+          <div class="file-card">
+            <div class="file-icon-wrap mp3">MP3</div>
+            <div class="file-info">
+              <span class="file-name">speech.mp3</span>
+              <span id="file-size-mp3" class="file-meta">24 kHz Broadcast Audio</span>
+            </div>
+            <div class="file-actions">
+              <a id="link-download-mp3" href="#" download="speech.mp3" class="btn-file-action play">Download</a>
+            </div>
+          </div>
+
+          <div class="file-card">
+            <div class="file-icon-wrap wav">WAV</div>
+            <div class="file-info">
+              <span class="file-name">speech.wav</span>
+              <span id="file-size-wav" class="file-meta">Master 24 kHz Lossless</span>
+            </div>
+            <div class="file-actions">
+              <a id="link-download-wav" href="#" download="speech.wav" class="btn-file-action">Download</a>
+            </div>
+          </div>
+
+          <div class="file-card">
+            <div class="file-icon-wrap srt">SRT</div>
+            <div class="file-info">
+              <span class="file-name">speech.srt</span>
+              <span id="file-size-srt" class="file-meta">Video Subtitles</span>
+            </div>
+            <div class="file-actions">
+              <a id="link-download-srt" href="#" download="speech.srt" class="btn-file-action">Download</a>
+            </div>
+          </div>
+
+          <div class="file-card">
+            <div class="file-icon-wrap json">JSON</div>
+            <div class="file-info">
+              <span class="file-name">speech.json</span>
+              <span id="file-size-json" class="file-meta">Word Timestamps (ms)</span>
+            </div>
+            <div class="file-actions">
+              <a id="link-download-json" href="#" download="speech.json" class="btn-file-action">Download</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FULL-WIDTH DEDICATED LIVE SUBTITLES MONITOR (NEAR PLAYER) -->
+      <div class="workspace-subtitles-card" id="workspace-subtitles-panel">
+        <div class="subtitles-monitor-header">
+          <div class="monitor-badge-group">
+            <span class="live-recording-dot"></span>
+            <span class="monitor-title">LIVE SYNCHRONIZED SUBTITLES & KARAOKE</span>
+          </div>
+          <div class="subtitles-meta-info" id="subtitles-status-meta">
+            Ready · Real-time Word Highlighting
+          </div>
+        </div>
+        <div class="subtitles-viewport" id="player-karaoke-viewport">
+          <div id="player-karaoke-text" class="fullwidth-karaoke-text">
+            <span class="karaoke-idle">Ready to play audio... Select a voice to audition or click Synthesize to view live synchronized word highlights.</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- =========================================================================
+       BOTTOM PERSISTENT MASTER AUDIO PLAYER
+       ========================================================================= -->
+  <footer id="global-player" class="global-player">
+    <div class="player-inner">
+      
+      <!-- Track Meta -->
+      <div class="player-track-info">
+        <img id="player-thumb" src="/presets/avatars/narrator-deep-en.svg" alt="Track Cover" class="player-thumb" onerror="this.src='/presets/avatars/narrator-deep-en.svg'">
+        <div class="player-titles">
+          <div id="player-title" class="player-title">No Audio Loaded</div>
+          <div id="player-subtitle" class="player-subtitle">Select a narrator or generate speech</div>
+        </div>
+      </div>
+
+      <!-- Controls & Full Scrubber -->
+      <div class="player-center">
+        <div class="player-btn-row">
+          <button type="button" class="player-btn" onclick="playerRewind(5)" title="Rewind 5s">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+          </button>
+          <button type="button" id="player-play-btn" class="player-btn play-main" onclick="togglePlayPause()" title="Play / Pause">
+            <svg id="player-play-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+          <button type="button" class="player-btn" onclick="playerForward(5)" title="Forward 5s">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg>
+          </button>
+        </div>
+
+        <div class="player-progress-container">
+          <span id="player-time-curr" class="time-label">0:00</span>
+          <div id="player-scrubber-track" class="scrubber-track" onclick="seekAudio(event)">
+            <div id="player-scrubber-fill" class="scrubber-fill" style="width:0%;"></div>
+          </div>
+          <span id="player-time-total" class="time-label">0:00</span>
+        </div>
+      </div>
+
+      <!-- Right Audio Spec Badge -->
+      <div class="player-right-badge">
+        <span class="player-spec-pill">
+          <span class="spec-dot"></span> 24 kHz Broadcast Audio
+        </span>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       SLIDE-OVER HISTORY DRAWER
+       ========================================================================= -->
+  <div id="history-drawer-overlay" class="drawer-overlay" onclick="toggleHistoryDrawer(false)"></div>
+  <aside id="history-drawer" class="history-drawer">
+    <div class="drawer-header">
+      <div class="drawer-title-group">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        <h3>Generation History</h3>
+      </div>
+      <button type="button" class="btn-close-drawer" onclick="toggleHistoryDrawer(false)">✕</button>
+    </div>
+    <div id="history-list" class="history-list">
+      <!-- Rendered dynamically -->
+    </div>
+  </aside>
+
+  <!-- =========================================================================
+       VOICE CLONING MODAL DIALOG
+       ========================================================================= -->
+  <div id="clone-voice-modal" class="modal-backdrop" style="display: none;" onclick="handleModalBackdropClick(event)">
+    <div class="modal-dialog clone-dialog" role="dialog" aria-modal="true" aria-labelledby="clone-modal-title">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" x2="22"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <h3 id="clone-modal-title" class="modal-title">Clone Custom Voice</h3>
+          <p class="modal-subtitle">Upload a 3–15 second clean speech sample to clone any voice with zero-shot neural synthesis.</p>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeCloneVoiceModal()" aria-label="Close dialog">&times;</button>
+      </div>
+
+      <form id="clone-voice-form" onsubmit="handleCloneVoiceSubmit(event)">
+        <div class="modal-body">
+          <!-- Voice Name & Gender -->
+          <div class="form-row two-col">
+            <div class="form-group">
+              <label class="form-label" for="clone-voice-name">Voice Name <span class="required">*</span></label>
+              <input type="text" id="clone-voice-name" class="form-input" placeholder="e.g. Morgan Freeman, Story Narrator, My Voice" required autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Speaker Gender</label>
+              <div class="gender-pill-group">
+                <label class="gender-pill">
+                  <input type="radio" name="clone-gender" value="Male" checked>
+                  <span>Male</span>
+                </label>
+                <label class="gender-pill">
+                  <input type="radio" name="clone-gender" value="Female">
+                  <span>Female</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Language Selector -->
+          <div class="form-group">
+            <label class="form-label" for="clone-voice-lang">Primary Language</label>
+            <select id="clone-voice-lang" class="form-select">
+              <option value="en">English (en)</option>
+              <option value="es">Spanish (es)</option>
+              <option value="hi">Hindi (hi)</option>
+              <option value="ur">Urdu (ur)</option>
+              <option value="fr">French (fr)</option>
+              <option value="de">German (de)</option>
+            </select>
+          </div>
+
+          <!-- Audio Dropzone -->
+          <div class="form-group">
+            <label class="form-label">Reference Audio Clip <span class="required">*</span></label>
+            <div class="audio-dropzone" id="clone-audio-dropzone" onclick="triggerCloneFileInput(event)" ondragover="handleCloneDragOver(event)" ondragleave="handleCloneDragLeave(event)" ondrop="handleCloneDrop(event)">
+              <input type="file" id="clone-audio-file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" style="display: none;" onchange="handleCloneFileSelected(event)">
+              
+              <div class="dropzone-content" id="dropzone-placeholder">
+                <div class="dropzone-icon">
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                </div>
+                <div class="dropzone-text">
+                  <strong>Click to upload</strong> or drag and drop audio sample
+                </div>
+                <div class="dropzone-hint">WAV, MP3, M4A, FLAC (Recommended: 3–15 seconds clear speech, max 25MB)</div>
+              </div>
+
+              <!-- Selected File Preview -->
+              <div class="dropzone-file-preview" id="dropzone-file-preview" style="display: none;">
+                <div class="file-preview-header">
+                  <span class="file-audio-icon">🎵</span>
+                  <div class="file-details">
+                    <span id="clone-file-name" class="file-name">sample.wav</span>
+                    <span id="clone-file-size" class="file-size">1.2 MB</span>
+                  </div>
+                  <button type="button" class="btn-remove-file" onclick="removeCloneFile(event)" title="Choose a different file">&times;</button>
+                </div>
+                <audio id="clone-audio-player" controls preload="metadata" class="clone-preview-audio"></audio>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reference Transcript with Auto-Transcribe -->
+          <div class="form-group">
+            <div class="label-with-action">
+              <label class="form-label" for="clone-ref-text">Reference Transcript <span class="optional">(Recommended for zero-shot accuracy)</span></label>
+              <button type="button" id="btn-auto-transcribe" class="btn-micro-action" onclick="autoTranscribeCloneAudio()">
+                ✨ Auto-Transcribe with Whisper
+              </button>
+            </div>
+            <textarea id="clone-ref-text" class="form-textarea" rows="2" placeholder="Exact words spoken in the reference clip. If left empty, Whisper AI will automatically transcribe them."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-cancel" onclick="closeCloneVoiceModal()">Cancel</button>
+          <button type="submit" id="btn-submit-clone" class="btn-modal-submit">
+            <span id="btn-clone-submit-text">🚀 Save & Clone Voice</span>
+            <span id="btn-clone-submit-spinner" class="spinner" style="display: none;"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       VOICE DESIGN MODAL (Interactive Traits Builder)
+       ========================================================================= -->
+  <div id="design-voice-modal" class="modal-backdrop" style="display: none;" onclick="handleDesignModalBackdropClick(event)">
+    <div class="modal-card modal-design-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon-badge design">✨</div>
+          <div>
+            <h3 class="modal-title">Voice Designer</h3>
+            <p class="modal-subtitle">Synthesize and save a new AI voice persona using acoustic descriptor traits.</p>
+          </div>
+        </div>
+        <button type="button" class="btn-modal-close" onclick="closeVoiceDesignModal()">&times;</button>
+      </div>
+
+      <form id="design-voice-form" onsubmit="handleVoiceDesignSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="design-voice-name">Voice Name <span class="required">*</span></label>
+            <input type="text" id="design-voice-name" class="form-input" placeholder="e.g. Master Historian, Cosmic Tech Guide..." required>
+          </div>
+
+          <!-- Interactive Acoustic Traits -->
+          <div class="form-group">
+            <label class="form-label">Voice Characteristics & Persona Traits</label>
+            <div class="traits-container">
+              <div class="trait-group">
+                <span class="trait-label">Gender:</span>
+                <div class="trait-chips" id="trait-gender-chips">
+                  <button type="button" class="trait-chip active" data-trait="male" onclick="toggleTraitChip(this, 'gender')">Male</button>
+                  <button type="button" class="trait-chip" data-trait="female" onclick="toggleTraitChip(this, 'gender')">Female</button>
+                </div>
+              </div>
+
+              <div class="trait-group">
+                <span class="trait-label">Age Group:</span>
+                <div class="trait-chips" id="trait-age-chips">
+                  <button type="button" class="trait-chip" data-trait="child" onclick="toggleTraitChip(this, 'age')">Child</button>
+                  <button type="button" class="trait-chip" data-trait="teenager" onclick="toggleTraitChip(this, 'age')">Teenager</button>
+                  <button type="button" class="trait-chip" data-trait="young adult" onclick="toggleTraitChip(this, 'age')">Young Adult</button>
+                  <button type="button" class="trait-chip active" data-trait="middle-aged" onclick="toggleTraitChip(this, 'age')">Middle-aged</button>
+                  <button type="button" class="trait-chip" data-trait="elderly" onclick="toggleTraitChip(this, 'age')">Elderly</button>
+                </div>
+              </div>
+
+              <div class="trait-group">
+                <span class="trait-label">Pitch & Tone:</span>
+                <div class="trait-chips" id="trait-pitch-chips">
+                  <button type="button" class="trait-chip" data-trait="very low pitch" onclick="toggleTraitChip(this, 'pitch')">Very Low</button>
+                  <button type="button" class="trait-chip active" data-trait="low pitch" onclick="toggleTraitChip(this, 'pitch')">Low Pitch</button>
+                  <button type="button" class="trait-chip" data-trait="moderate pitch" onclick="toggleTraitChip(this, 'pitch')">Moderate</button>
+                  <button type="button" class="trait-chip" data-trait="high pitch" onclick="toggleTraitChip(this, 'pitch')">High Pitch</button>
+                </div>
+              </div>
+
+              <div class="trait-group">
+                <span class="trait-label">Accent:</span>
+                <div class="trait-chips" id="trait-accent-chips">
+                  <button type="button" class="trait-chip active" data-trait="american accent" onclick="toggleTraitChip(this, 'accent')">American</button>
+                  <button type="button" class="trait-chip" data-trait="british accent" onclick="toggleTraitChip(this, 'accent')">British</button>
+                  <button type="button" class="trait-chip" data-trait="australian accent" onclick="toggleTraitChip(this, 'accent')">Australian</button>
+                  <button type="button" class="trait-chip" data-trait="indian accent" onclick="toggleTraitChip(this, 'accent')">Indian</button>
+                  <button type="button" class="trait-chip" data-trait="canadian accent" onclick="toggleTraitChip(this, 'accent')">Canadian</button>
+                  <button type="button" class="trait-chip" data-trait="japanese accent" onclick="toggleTraitChip(this, 'accent')">Japanese</button>
+                  <button type="button" class="trait-chip" data-trait="korean accent" onclick="toggleTraitChip(this, 'accent')">Korean</button>
+                  <button type="button" class="trait-chip" data-trait="chinese accent" onclick="toggleTraitChip(this, 'accent')">Chinese</button>
+                  <button type="button" class="trait-chip" data-trait="portuguese accent" onclick="toggleTraitChip(this, 'accent')">Portuguese</button>
+                  <button type="button" class="trait-chip" data-trait="russian accent" onclick="toggleTraitChip(this, 'accent')">Russian</button>
+                  <button type="button" class="trait-chip" data-trait="whisper" onclick="toggleTraitChip(this, 'style')">Whisper</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prompt Preview Box -->
+          <div class="form-group">
+            <label class="form-label">Compiled OmniVoice Prompt</label>
+            <input type="text" id="design-instruct-preview" class="form-input code-font" readonly value="male, middle-aged, low pitch, american accent">
+          </div>
+
+          <!-- Sample Audition Sentence -->
+          <div class="form-group">
+            <label class="form-label" for="design-sample-text">Audition Sample Preview Sentence</label>
+            <input type="text" id="design-sample-text" class="form-input" value="Hello! This is a synthesized speech preview from OmniVoice Studio.">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-cancel" onclick="closeVoiceDesignModal()">Cancel</button>
+          <button type="submit" id="btn-submit-design" class="btn-modal-submit">
+            <span id="btn-design-submit-text">✨ Create Designed Voice</span>
+            <span id="btn-design-submit-spinner" class="spinner" style="display: none;"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       DICTATION / TRANSCRIPTION MODAL (VoiceStudio Feature)
+       ========================================================================= -->
+  <div id="dictation-modal" class="modal-backdrop" style="display: none;" onclick="handleDictationModalBackdropClick(event)">
+    <div class="modal-card modal-dictation-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon-badge dictation">🎙️</div>
+          <div>
+            <h3 class="modal-title">Audio Transcription & Dictation</h3>
+            <p class="modal-subtitle">Transcribe audio files into narration text with faster-whisper AI.</p>
+          </div>
+        </div>
+        <button type="button" class="btn-modal-close" onclick="closeDictationModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Select Audio File to Transcribe</label>
+          <div class="audio-dropzone" id="dictate-dropzone" onclick="document.getElementById('dictate-file-input').click()">
+            <input type="file" id="dictate-file-input" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.webm" style="display:none;" onchange="handleDictateFileSelected(event)">
+            <div id="dictate-dropzone-placeholder" class="dropzone-content">
+              <div class="dropzone-icon">🎙️</div>
+              <div class="dropzone-text"><strong>Click to choose audio file</strong> or drop audio here</div>
+              <div class="dropzone-hint">Supports MP3, WAV, M4A, FLAC, WebM</div>
+            </div>
+            <div id="dictate-file-preview" class="dropzone-file-preview" style="display: none;">
+              <span class="file-audio-icon">🎵</span>
+              <div class="file-details">
+                <span id="dictate-file-name" class="file-name">sample.mp3</span>
+                <span id="dictate-file-size" class="file-size">1.5 MB</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="dictate-lang-select">Spoken Language</label>
+          <select id="dictate-lang-select" class="form-select">
+            <option value="all">Auto-Detect Language</option>
+            <option value="en" selected>English (en)</option>
+            <option value="es">Spanish (es)</option>
+            <option value="hi">Hindi (hi)</option>
+            <option value="ur">Urdu (ur)</option>
+            <option value="fr">French (fr)</option>
+            <option value="de">German (de)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <button type="button" id="btn-run-transcribe" class="btn-convert-local" onclick="runAudioTranscription()" style="width: 100%;">
+            <span>⚡ Start AI Transcription</span>
+          </button>
+        </div>
+
+        <div class="form-group" id="dictate-result-group" style="display:none;">
+          <label class="form-label">Transcribed Result</label>
+          <textarea id="dictate-result-text" class="form-textarea" rows="4"></textarea>
+          <div class="dictate-result-footer">
+            <span id="dictate-result-meta" class="file-meta">Transcribed in 0.0s</span>
+            <button type="button" class="btn-hero-clone" onclick="insertTranscriptionIntoEditor()">📋 Insert into Script Editor</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Element -->
+  <audio id="audio-engine" preload="auto"></audio>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

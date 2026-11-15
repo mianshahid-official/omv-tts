@@ -1,0 +1,36 @@
+# Output directories and generated files
+output/
+output/*
+
+# Audio media files (do not push to repo)
+presets/audio/
+presets/audio/*
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+*.aac
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local user history and logs
+data/history.json
+*.log
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
