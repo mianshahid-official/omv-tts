@@ -2,9 +2,9 @@ import os
 import sys
 import threading
 import time
+import webbrowser
 import requests
 import uvicorn
-import webview
 from server import app
 
 def run_api_server():
@@ -25,8 +25,7 @@ def wait_for_server():
 if __name__ == "__main__":
     print("=" * 65)
     print("   🎙️  OMNI VOICE LOCAL STUDIO - DESKTOP APPLICATION")
-    print("   🖥️  Initializing Native Desktop Window (Edge Chromium)...")
-    print("   ⚡  Local k2-fsa/OmniVoice & Faster-Whisper Pipeline Ready")
+    print("   🖥️  Initializing Desktop Gateway on http://127.0.0.1:8000...")
     print("=" * 65)
 
     # Start API server in background daemon thread
@@ -37,19 +36,29 @@ if __name__ == "__main__":
     if not wait_for_server():
         print("⚠️ Warning: Server slow to respond, launching window anyway...")
 
-    # Create native standalone desktop application window
-    window = webview.create_window(
-        title="Omni Voice Studio - AI Voice Generator & Local TTS",
-        url="http://127.0.0.1:8000",
-        width=1360,
-        height=880,
-        min_size=(1000, 680),
-        background_color="#0B0E13",
-        text_select=True,
-        zoomable=True
-    )
-
-    # Start native desktop window loop
-    webview.start(gui="edgechromium", debug=False)
-    # Instantly terminate process and close CMD window
-    os._exit(0)
+    url = "http://127.0.0.1:8000"
+    try:
+        import webview
+        # Create native standalone desktop application window
+        window = webview.create_window(
+            title="Omni Voice Studio - AI Voice Generator & Local TTS",
+            url=url,
+            width=1360,
+            height=880,
+            min_size=(1000, 680),
+            background_color="#0B0E13",
+            text_select=True,
+            zoomable=True
+        )
+        # Start native desktop window loop
+        webview.start(gui="edgechromium", debug=False)
+        os._exit(0)
+    except Exception as err:
+        print(f"[Omni Voice] Native window unavailable ({err}). Opening default web browser...")
+        webbrowser.open(url)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("Exiting...")
+            os._exit(0)

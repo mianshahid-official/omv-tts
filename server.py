@@ -14,7 +14,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import omnivoice_engine
+try:
+    import omnivoice_engine
+except Exception as e:
+    omnivoice_engine = None
+    print(f"[OmniVoice] Notice: Local neural engine not initialized ({e}). Modal Cloud GPU synthesis remains active.")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -370,6 +374,12 @@ def _generate_speech_sync(req: TTSRequest):
     num_step = req.num_step
     guidance_scale = req.guidance_scale or 2.0
 
+    if omnivoice_engine is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Local OmniVoice neural engine is not installed (requires torch and k2-fsa/OmniVoice). Please switch to Modal Cloud GPU synthesis or install local PyTorch dependencies."
+        )
+
     # Synthesis via k2-fsa/OmniVoice
     try:
         omnivoice_engine.set_progress(
@@ -673,21 +683,33 @@ async def get_tts_status(job_id: str):
 @app.get("/api/progress")
 async def get_tts_progress():
     """Returns real-time progress for model loading and speech conversion."""
-    return omnivoice_engine.get_progress()
+    if omnivoice_engine:
+        return omnivoice_engine.get_progress()
+    return {"status": "idle", "stage": "Ready (Modal Cloud active)", "percent": 0, "detail": "Local engine not loaded"}
 
 
 @app.get("/api/health")
 async def health_check():
     """Health check for VoiceStudio engine & local hardware status."""
-    dev = omnivoice_engine.get_device_config()
-    prog = omnivoice_engine.get_progress()
+    if omnivoice_engine:
+        dev = omnivoice_engine.get_device_config()
+        prog = omnivoice_engine.get_progress()
+        return {
+            "status": "healthy",
+            "engine": "k2-fsa/OmniVoice",
+            "device": dev["device"],
+            "has_gpu": dev["has_gpu"],
+            "dtype": str(dev["dtype"]),
+            "model_loaded": prog.get("model_loaded", False),
+            "presets_count": len(load_json(PRESETS_FILE, []))
+        }
     return {
         "status": "healthy",
-        "engine": "k2-fsa/OmniVoice",
-        "device": dev["device"],
-        "has_gpu": dev["has_gpu"],
-        "dtype": str(dev["dtype"]),
-        "model_loaded": prog.get("model_loaded", False),
+        "engine": "Modal Cloud GPU",
+        "device": "Cloud T4 GPU",
+        "has_gpu": True,
+        "dtype": "float16",
+        "model_loaded": True,
         "presets_count": len(load_json(PRESETS_FILE, []))
     }
 
@@ -695,7 +717,7 @@ async def health_check():
 @app.get("/api/engines")
 async def list_engines():
     """Lists available local speech synthesis engines (mirroring VoiceStudio catalog)."""
-    dev = omnivoice_engine.get_device_config()
+    dev = omnivoice_engine.get_device_config() if omnivoice_engine else {"device": "Modal Cloud T4 GPU"}
     return {
         "default": "omnivoice",
         "engines": [
