@@ -30,7 +30,7 @@ if %errorlevel% neq 0 (
 
 :: 2. Auto-check required basic packages
 echo [*] Checking required dependencies...
-%PY_CMD% -c "import fastapi, uvicorn, pydantic, requests" >nul 2>nul
+%PY_CMD% -c "import fastapi, uvicorn, pydantic, requests, huggingface_hub" >nul 2>nul
 if %errorlevel% neq 0 (
     echo.
     echo [*] First-time setup detected: Installing required Python packages...
@@ -108,9 +108,6 @@ if "%CHOICE%"=="4" (
     %PY_CMD% -m pip install -r requirements-local.txt
     echo.
     echo [*] Done!
-    pause
-    exit /b 0
-)
     pause
     exit /b 0
 )

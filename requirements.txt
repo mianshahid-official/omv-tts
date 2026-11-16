@@ -12,6 +12,9 @@ pywebview>=5.0.0
 requests>=2.31.0
 python-multipart>=0.0.9
 
+# --- Model Downloader & HuggingFace Hub ---
+huggingface_hub>=0.22.0
+
 # --- Audio Handling ---
 soundfile>=0.12.1
 numpy>=1.26.0
