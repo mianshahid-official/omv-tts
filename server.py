@@ -50,7 +50,9 @@ def get_whisper():
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
             compute_type = "float16" if device == "cuda" else "int8"
-            whisper_model = WhisperModel("base", device=device, compute_type=compute_type)
+            whisper_dir = BASE_DIR / "models" / "whisper"
+            whisper_dir.mkdir(parents=True, exist_ok=True)
+            whisper_model = WhisperModel("base", device=device, compute_type=compute_type, download_root=str(whisper_dir))
         except Exception as e:
             print(f"Whisper initialization note: {e}")
             return None

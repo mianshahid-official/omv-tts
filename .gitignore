@@ -29,6 +29,10 @@ ENV/
 data/history.json
 *.log
 
+# Local neural model weights (downloaded to storage)
+models/
+models/*
+
 # Editor & OS files
 .vscode/
 .idea/

@@ -23,6 +23,11 @@ import numpy as np
 import soundfile as sf
 import torch
 
+BASE_DIR = Path(__file__).resolve().parent
+MODELS_DIR = BASE_DIR / "models"
+OMNIVOICE_MODEL_DIR = MODELS_DIR / "omnivoice"
+WHISPER_MODEL_DIR = MODELS_DIR / "whisper"
+
 _omnivoice_model = None
 _progress_lock = threading.Lock()
 
@@ -150,8 +155,16 @@ def get_omnivoice():
             except Exception as hook_err:
                 print(f"[OmniVoice] Tqdm hook note: {hook_err}")
 
+            # Check for local model in models/omnivoice folder
+            if (OMNIVOICE_MODEL_DIR / "model.safetensors").exists():
+                model_source = str(OMNIVOICE_MODEL_DIR)
+                print(f"[OmniVoice] Loading from local models folder: {model_source}")
+            else:
+                model_source = "k2-fsa/OmniVoice"
+                print(f"[OmniVoice] Local models folder not found, falling back to HuggingFace Hub: {model_source}")
+
             _omnivoice_model = OmniVoice.from_pretrained(
-                "k2-fsa/OmniVoice",
+                model_source,
                 device_map=cfg["device_map"],
                 dtype=cfg["dtype"],
             )
