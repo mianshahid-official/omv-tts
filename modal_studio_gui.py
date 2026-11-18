@@ -15,10 +15,12 @@ import base64
 import time
 import urllib.request
 import webbrowser
+import concurrent.futures
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 import uvicorn
+from starlette.concurrency import run_in_threadpool
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -102,6 +104,18 @@ class ScriptItem(BaseModel):
     text: str
 
 
+class ModalScriptConvertRequest(BaseModel):
+    name: Optional[str] = "script"
+    text: str
+    presetId: Optional[str] = "narrator-deep-en"
+    voiceId: Optional[str] = None
+    speed: Optional[float] = 1.0
+    language: Optional[str] = "en"
+    instruct: Optional[str] = None
+    ref_audio_b64: Optional[str] = None
+    ref_text: Optional[str] = None
+
+
 class ModalBulkConvertRequest(BaseModel):
     modalUrl: Optional[str] = None
     scripts: list[ScriptItem]
@@ -112,6 +126,7 @@ class ModalBulkConvertRequest(BaseModel):
     speed: Optional[float] = 1.0
     ref_audio_b64: Optional[str] = None
     ref_text: Optional[str] = None
+    concurrency: Optional[int] = 3
 
 
 @gui_app.post("/api/modal/convert")
@@ -260,93 +275,100 @@ async def modal_convert_bridge(req: ModalConvertRequest):
         return result
 
 
-@gui_app.post("/api/modal/convert_bulk")
-async def modal_convert_bulk(req: ModalBulkConvertRequest):
-    """
-    Desktop GUI Bulk Bridge to Modal Cloud GPU:
-    Processes multiple scripts in bulk.
-    Executes sequentially on the warmed-up Modal T4 GPU container without letting the GPU turn off.
-    Saves speech.mp3, speech.srt, speech.json, and script.txt in dedicated local output folders.
-    """
-    if not req.scripts:
-        raise HTTPException(status_code=400, detail="No scripts provided for bulk processing.")
+def save_modal_result_locally(result: dict, script_text: str, script_name: str) -> dict:
+    """Helper to immediately write all 4 files (mp3, srt, json, txt) to local output/<folder>/."""
+    folder = result.get("folder") or script_name or f"speech_{int(time.time())}"
+    folder_path = OUTPUT_DIR / folder
+    folder_path.mkdir(parents=True, exist_ok=True)
 
+    if result.get("mp3_b64"):
+        b64 = result["mp3_b64"]
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        (folder_path / "speech.mp3").write_bytes(base64.b64decode(b64))
+
+    if result.get("srt_content"):
+        (folder_path / "speech.srt").write_text(result["srt_content"], encoding="utf-8")
+
+    if result.get("json_content"):
+        raw = result["json_content"]
+        if isinstance(raw, str):
+            (folder_path / "speech.json").write_text(raw, encoding="utf-8")
+        else:
+            (folder_path / "speech.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+    (folder_path / "script.txt").write_text(script_text, encoding="utf-8")
+
+    result["local_folder"] = str(folder_path)
+    result["name"] = script_name
+    print(f"[Desktop Bridge] Saved all 4 files for '{script_name}' to: {folder_path}")
+    return result
+
+
+@gui_app.post("/api/modal/convert_script")
+async def modal_convert_single_script(req: ModalScriptConvertRequest):
+    """
+    Dedicated real-time per-script endpoint for bulk processing.
+    Executes Modal Cloud GPU synthesis for one script,
+    immediately saves all 4 files locally to output/<folder>/,
+    and returns full result to the GUI in real-time.
+    """
+    clean_text = req.text.strip()
+    if not clean_text:
+        raise HTTPException(status_code=400, detail="Script text cannot be empty.")
+
+    script_name = req.name or "script"
     voice_id = req.presetId or req.voiceId or "narrator-deep-en"
     speed = float(req.speed or 1.0)
     language = req.language or "en"
-    
-    print(f"\n[Desktop Bridge] Bulk conversion requested for {len(req.scripts)} scripts with voice '{voice_id}'...")
 
-    # Strategy 1: Modal Python SDK direct bulk call
-    try:
-        import modal
-        print("[Desktop Bridge] Attempting Modal SDK 'synthesize_scripts_bulk'...")
-        bulk_items = [{"name": s.name or f"script_{i+1}", "text": s.text.strip()} for i, s in enumerate(req.scripts) if s.text.strip()]
-        if not bulk_items:
-            raise HTTPException(status_code=400, detail="All scripts were empty.")
+    import modal
+    fn_single = modal.Function.from_name("omnivoice-studio", "synthesize_script_file")
 
-        fn_bulk = modal.Function.from_name("omnivoice-studio", "synthesize_scripts_bulk")
-        bulk_res = fn_bulk.remote(
-            scripts=bulk_items,
+    def run_remote():
+        return fn_single.remote(
+            script_text=clean_text,
             voice_id=voice_id,
             speed=speed,
             language=language,
             instruct=req.instruct,
             ref_audio_b64=req.ref_audio_b64,
             ref_text=req.ref_text,
+            script_name=script_name,
         )
 
-        saved_results = []
-        for item in bulk_res.get("results", []):
-            folder = item.get("folder", f"speech_{int(time.time())}")
-            folder_path = OUTPUT_DIR / folder
-            folder_path.mkdir(parents=True, exist_ok=True)
+    res = await run_in_threadpool(run_remote)
+    saved = save_modal_result_locally(res, clean_text, script_name)
+    return saved
 
-            if item.get("mp3_b64"):
-                b64 = item["mp3_b64"]
-                if "," in b64:
-                    b64 = b64.split(",", 1)[1]
-                (folder_path / "speech.mp3").write_bytes(base64.b64decode(b64))
 
-            if item.get("srt_content"):
-                (folder_path / "speech.srt").write_text(item["srt_content"], encoding="utf-8")
+@gui_app.post("/api/modal/convert_bulk")
+async def modal_convert_bulk(req: ModalBulkConvertRequest):
+    """
+    Desktop GUI Bulk Bridge to Modal Cloud GPU:
+    Processes multiple scripts in bulk.
+    Executes first script to warm up and verify files, then dispatches remaining scripts simultaneously.
+    Saves speech.mp3, speech.srt, speech.json, and script.txt immediately as each completes.
+    """
+    if not req.scripts:
+        raise HTTPException(status_code=400, detail="No scripts provided for bulk processing.")
 
-            if item.get("json_content"):
-                raw = item["json_content"]
-                if isinstance(raw, str):
-                    (folder_path / "speech.json").write_text(raw, encoding="utf-8")
-                else:
-                    (folder_path / "speech.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    valid_scripts = [s for s in req.scripts if s.text.strip()]
+    if not valid_scripts:
+        raise HTTPException(status_code=400, detail="All scripts were empty.")
 
-            # Save script.txt
-            orig_text = item.get("script_text") or next((s.text for s in req.scripts if s.name == item.get("name")), "")
-            (folder_path / "script.txt").write_text(orig_text, encoding="utf-8")
+    voice_id = req.presetId or req.voiceId or "narrator-deep-en"
+    speed = float(req.speed or 1.0)
+    language = req.language or "en"
+    concurrency = max(1, req.concurrency or 3)
 
-            saved_results.append({
-                **item,
-                "local_folder": str(folder_path),
-            })
-            print(f"[Desktop Bridge] Saved bulk item '{item.get('name')}' (4 files) to: {folder_path}")
-
-        return {
-            "success": True,
-            "total": len(saved_results),
-            "results": saved_results,
-        }
-    except Exception as bulk_err:
-        print(f"[Desktop Bridge] synthesize_scripts_bulk note: {bulk_err}. Falling back to sequential execution on warm container...")
-
-    # Strategy 2: Sequential execution using warm container
     import modal
     fn_single = modal.Function.from_name("omnivoice-studio", "synthesize_script_file")
-    saved_results = []
-    for idx, s in enumerate(req.scripts):
-        s_text = s.text.strip()
-        s_name = s.name or f"script_{idx+1}"
-        if not s_text:
-            continue
-        print(f"[Desktop Bridge] Sequentially processing script {idx+1}/{len(req.scripts)}: '{s_name}' on warm container...")
-        result = fn_single.remote(
+
+    def process_one(s_item):
+        s_name = s_item.name or "script"
+        s_text = s_item.text.strip()
+        res = fn_single.remote(
             script_text=s_text,
             voice_id=voice_id,
             speed=speed,
@@ -356,34 +378,26 @@ async def modal_convert_bulk(req: ModalBulkConvertRequest):
             ref_text=req.ref_text,
             script_name=s_name,
         )
-        folder = result.get("folder", f"speech_{int(time.time())}")
-        folder_path = OUTPUT_DIR / folder
-        folder_path.mkdir(parents=True, exist_ok=True)
+        return save_modal_result_locally(res, s_text, s_name)
 
-        if result.get("mp3_b64"):
-            b64 = result["mp3_b64"]
-            if "," in b64:
-                b64 = b64.split(",", 1)[1]
-            (folder_path / "speech.mp3").write_bytes(base64.b64decode(b64))
+    saved_results = []
 
-        if result.get("srt_content"):
-            (folder_path / "speech.srt").write_text(result["srt_content"], encoding="utf-8")
+    # 1. First script: execute first to warm up container and verify files
+    first_s = valid_scripts[0]
+    print(f"\n[Desktop Bridge] Bulk [1/{len(valid_scripts)}] Processing first script: '{first_s.name}'...")
+    res_1 = await run_in_threadpool(process_one, first_s)
+    saved_results.append(res_1)
 
-        if result.get("json_content"):
-            raw = result["json_content"]
-            if isinstance(raw, str):
-                (folder_path / "speech.json").write_text(raw, encoding="utf-8")
-            else:
-                (folder_path / "speech.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    # 2. Remaining scripts: execute simultaneously
+    remaining = valid_scripts[1:]
+    if remaining:
+        print(f"\n[Desktop Bridge] First script completed! Dispatching remaining {len(remaining)} scripts simultaneously (concurrency={concurrency})...")
+        def run_remaining():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+                return list(executor.map(process_one, remaining))
 
-        (folder_path / "script.txt").write_text(s_text, encoding="utf-8")
-
-        saved_results.append({
-            **result,
-            "name": s_name,
-            "local_folder": str(folder_path),
-        })
-        print(f"[Desktop Bridge] Saved sequential bulk item '{s_name}' (4 files) to: {folder_path}")
+        rem_results = await run_in_threadpool(run_remaining)
+        saved_results.extend(rem_results)
 
     return {
         "success": True,

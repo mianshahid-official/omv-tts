@@ -673,11 +673,6 @@ async function startBulkModalConversion() {
 
   let modalUrl = dom.modalUrlInput.value.trim().replace(/\/+$/, "");
   if (modalUrl.endsWith(".modal")) modalUrl += ".run";
-  if (!modalUrl) {
-    showToast("Please provide your Modal endpoint URL in the header.", "error");
-    dom.modalUrlInput.focus();
-    return;
-  }
 
   state.bulkIsConverting = true;
   dom.btnConvertModal.disabled = true;
@@ -694,15 +689,28 @@ async function startBulkModalConversion() {
     dom.progressTimer.textContent = `⏱️ ${elapsed}s`;
   }, 100);
 
-  updateProgress(10, `Initializing Bulk Modal T4 Pipeline (${state.bulkQueue.length} files)...`, "Connecting to Modal Cloud T4 GPU container...");
+  const total = state.bulkQueue.length;
+  updateProgress(10, `Initializing Modal T4 Pipeline (${total} scripts)...`, "Preparing first script for verification...");
 
-  try {
-    const speed = parseFloat(dom.sliderSpeed.value) / 100;
-    const language = dom.selectLang.value;
+  // Reset statuses of all queue items to pending
+  state.bulkQueue.forEach(item => { item.status = "pending"; item.result = null; });
+  renderBulkQueue();
+
+  const speed = parseFloat(dom.sliderSpeed.value) / 100;
+  const language = dom.selectLang.value;
+
+  async function convertSingleItem(item, index) {
+    item.status = "processing";
+    renderBulkQueue();
+    updateProgress(
+      Math.min(95, Math.floor(15 + (index / total) * 75)),
+      `[${index + 1}/${total}] Synthesizing '${item.name}' on Modal GPU...`,
+      `Diffusing acoustic frames with ${state.selectedPreset.name}...`
+    );
 
     const payload = {
-      modalUrl: modalUrl,
-      scripts: state.bulkQueue.map(item => ({ name: item.name, text: item.text })),
+      name: item.name,
+      text: item.text,
       presetId: state.selectedPreset.id,
       speed: speed,
       language: language,
@@ -717,53 +725,68 @@ async function startBulkModalConversion() {
       payload.ref_text = state.selectedPreset.ref_text;
     }
 
+    try {
+      const res = await fetch("/api/modal/convert_script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server returned ${res.status}`);
+      }
+
+      const data = await res.json();
+      item.status = "completed";
+      item.result = data;
+      renderBulkQueue();
+      showToast(`✓ [${index + 1}/${total}] '${item.name}' completed & saved! (${data.duration}s audio)`, "success");
+      return data;
+    } catch (err) {
+      item.status = "error";
+      renderBulkQueue();
+      showToast(`❌ Error on '${item.name}': ${err.message}`, "error");
+      throw err;
+    }
+  }
+
+  try {
     setPipelineStep("step-connect", "completed");
     setPipelineStep("step-diffuse", "active");
-    updateProgress(30, "Modal T4 GPU Synthesizing Scripts In Bulk...", "Processing scripts sequentially without GPU turning off...");
 
-    // Send bulk request to local bridge
-    const res = await fetch("/api/modal/convert_bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    // 1. Run First Script to verify files & warm up container
+    const firstItem = state.bulkQueue[0];
+    updateProgress(15, `[1/${total}] Synthesizing 1st Script: '${firstItem.name}'...`, "Verifying model and file output...");
+    const firstResult = await convertSingleItem(firstItem, 0);
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Server returned ${res.status}`);
+    // Auto-play or preview first audio
+    if (firstResult && (firstResult.mp3_b64 || firstResult.audioUrl)) {
+      state.lastFolder = firstResult.folder;
+      playBulkItemAudio(firstItem.id);
     }
 
-    const data = await res.json();
-    console.log("Bulk synthesis result:", data);
+    // 2. Dispatch remaining scripts simultaneously
+    if (state.bulkQueue.length > 1) {
+      const remainingItems = state.bulkQueue.slice(1);
+      updateProgress(40, `1st script saved! Dispatching remaining ${remainingItems.length} scripts simultaneously...`, "Modal T4 GPU parallel processing active...");
+      showToast(`1st script saved! Launching remaining ${remainingItems.length} scripts simultaneously on Modal...`, "info");
+
+      // Execute remaining items in parallel (simultaneously)
+      const promises = remainingItems.map((item, idx) => convertSingleItem(item, idx + 1));
+      await Promise.allSettled(promises);
+    }
 
     setPipelineStep("step-diffuse", "completed");
     setPipelineStep("step-mp3", "completed");
     setPipelineStep("step-srt", "completed");
     setPipelineStep("step-json", "completed");
-    updateProgress(100, `Bulk Complete! All ${data.total} Scripts Synthesized.`, "All 4 files (MP3, SRT, JSON, TXT) saved for each script.");
-
-    // Match results back to queue items
-    const results = data.results || [];
-    for (let i = 0; i < state.bulkQueue.length; i++) {
-      const item = state.bulkQueue[i];
-      const match = results.find(r => r.name === item.name) || results[i];
-      if (match) {
-        item.status = "completed";
-        item.result = match;
-      }
-    }
-    renderBulkQueue();
-    showToast(`Successfully synthesized all ${results.length} scripts in bulk on Modal! 🎉`, "success");
-
-    // Play first item
-    if (results.length > 0 && results[0].mp3_b64) {
-      state.lastFolder = results[0].folder;
-      playBulkItemAudio(state.bulkQueue[0].id);
-    }
+    updateProgress(100, `Bulk Complete! All ${total} Scripts Synthesized.`, "All 4 files (MP3, SRT, JSON, TXT) saved for each script in output/ folder.");
+    showToast(`🎉 Bulk synthesis completed! All scripts saved to output/ folder.`, "success");
   } catch (err) {
     console.error("Bulk conversion error:", err);
-    updateProgress(0, "Bulk Synthesis Failed", err.message);
-    showToast(`Bulk Synthesis Error: ${err.message}`, "error");
+    updateProgress(0, "Bulk Synthesis Interrupted", err.message);
+    showToast(`Bulk Synthesis Notice: ${err.message}`, "error");
   } finally {
     clearInterval(timerInterval);
     state.bulkIsConverting = false;
