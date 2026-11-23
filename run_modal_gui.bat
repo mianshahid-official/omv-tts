@@ -1,10 +1,11 @@
 @echo off
+@chcp 65001 >nul
 title OmniVoice Studio - Modal Cloud GPU Edition
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ================================================================
-echo      ⚡ OMNIVOICE STUDIO - MODAL CLOUD GPU EDITION
+echo      [OMNIVOICE STUDIO - MODAL CLOUD GPU EDITION]
 echo ================================================================
 echo.
 
@@ -50,7 +51,7 @@ if %errorlevel% neq 0 (
     echo.
 )
 
-:: 3. Automatically launch OmniVoice Modal Studio (Cloud GPU Version)
+:: 3. Launch OmniVoice Modal Studio
 echo [*] Starting OmniVoice Modal Studio on http://127.0.0.1:8001...
 echo.
 set PYTHONIOENCODING=utf-8

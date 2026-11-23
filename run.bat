@@ -1,10 +1,11 @@
 @echo off
-title OmniVoice Local Studio - Free Neural TTS
+@chcp 65001 >nul
+title OmniVoice Local Studio
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ================================================================
-echo      🎙️  OMNIVOICE LOCAL STUDIO (FREE LOCAL NEURAL TTS)
+echo      [OMNIVOICE LOCAL STUDIO - FREE NEURAL TTS]
 echo ================================================================
 echo.
 
@@ -50,26 +51,7 @@ if %errorlevel% neq 0 (
     echo.
 )
 
-:: 3. Auto-check PyTorch & OmniVoice for local free TTS
-%PY_CMD% -c "import torch, omnivoice" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo.
-    echo [*] PyTorch & OmniVoice not detected (required for Local Free Neural TTS).
-    echo [*] Installing local neural engine dependencies...
-    echo [*] Running: %PY_CMD% -m pip install -r requirements-local.txt
-    echo.
-    %PY_CMD% -m pip install -r requirements-local.txt
-    if !errorlevel! neq 0 (
-        echo.
-        echo [WARNING] PyTorch installation was incomplete.
-        echo Modal Cloud GPU synthesis will remain active via run_modal_gui.bat.
-    ) else (
-        echo [*] PyTorch & OmniVoice installed successfully!
-        echo.
-    )
-)
-
-:: 4. Automatically launch OmniVoice Local Studio (Free Local Version)
+:: 3. Launch OmniVoice Local Studio
 echo [*] Starting OmniVoice Local Studio on http://127.0.0.1:8000...
 echo.
 set PYTHONIOENCODING=utf-8

@@ -1,10 +1,11 @@
 @echo off
+@chcp 65001 >nul
 title OmniVoice Studio - Automated One-Click Installer
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ================================================================
-echo      📦  OMNIVOICE STUDIO - ONE-CLICK INSTALLER & SETUP
+echo      [OMNIVOICE STUDIO - ONE-CLICK INSTALLER & SETUP]
 echo ================================================================
 echo.
 echo This installer will:
@@ -37,7 +38,7 @@ if %errorlevel% neq 0 (
 )
 
 for /f "tokens=*" %%v in ('%PY_CMD% --version 2^>^&1') do set PY_VER=%%v
-echo   ✓ Found Python: !PY_VER!
+echo   [OK] Found Python: !PY_VER!
 echo.
 
 :: 2. Install requirements
@@ -54,7 +55,7 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
-echo   ✓ Core packages installed successfully!
+echo   [OK] Core packages installed successfully!
 echo.
 
 echo   [*] Checking PyTorch & OmniVoice neural engine for local free TTS...
@@ -67,10 +68,10 @@ if %errorlevel% neq 0 (
         echo [WARNING] PyTorch installation note: PyTorch can also be installed later.
         echo Modal Cloud GPU synthesis will remain available.
     ) else (
-        echo   ✓ Local neural engine installed successfully!
+        echo   [OK] Local neural engine installed successfully!
     )
 ) else (
-    echo   ✓ PyTorch & OmniVoice are already installed!
+    echo   [OK] PyTorch & OmniVoice are already installed!
 )
 echo.
 
@@ -87,13 +88,13 @@ if %errorlevel% neq 0 (
     pause
 ) else (
     echo.
-    echo   ✓ All neural model assets are verified and ready!
+    echo   [OK] All neural model assets are verified and ready!
 )
 echo.
 
 :: 4. Auto-launch run.bat
 echo ================================================================
-echo      🎉 INSTALLATION COMPLETE! Launching OmniVoice Studio...
+echo      [INSTALLATION COMPLETE] Launching OmniVoice Studio...
 echo ================================================================
 echo.
 timeout /t 2 >nul 2>nul
