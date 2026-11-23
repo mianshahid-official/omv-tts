@@ -1,16 +1,6 @@
-# Output directories and generated files
+# Output directories and generated user audio
 output/
 output/*
-
-# Audio media files (do not push to repo)
-presets/audio/
-presets/audio/*
-*.mp3
-*.wav
-*.flac
-*.ogg
-*.m4a
-*.aac
 
 # Python bytecode & cache
 __pycache__/
