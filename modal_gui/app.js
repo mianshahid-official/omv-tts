@@ -11,7 +11,7 @@
 // STATE STORE
 // ============================================================================
 const state = {
-  modalUrl: localStorage.getItem("omnivoice_modal_url") || "https://joybenny3333--omnivoice-studio-fastapi-app.modal.run",
+  modalUrl: localStorage.getItem("omnivoice_modal_url") || "",
   isConnected: false,
   presets: [],
   selectedPreset: null,

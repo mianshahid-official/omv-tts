@@ -1,14 +1,12 @@
-# OmniVoice Local Offline Engine Dependencies (Optional)
-# Only required if synthesizing on local CPU/GPU instead of Modal Cloud GPU
+# OmniVoice Local Offline Engine Dependencies
+# Required for synthesizing speech locally on CPU or NVIDIA CUDA GPU
 
 torch>=2.2.0
 torchaudio>=2.2.0
+omnivoice>=0.2.0
 faster-whisper>=1.0.0
 transformers>=4.40.0
 accelerate>=0.28.0
 librosa>=0.10.0
 scipy>=1.11.0
 huggingface_hub>=0.22.0
-
-# k2-fsa/OmniVoice:
-# pip install git+https://github.com/k2-fsa/OmniVoice.git

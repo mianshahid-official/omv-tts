@@ -9,9 +9,9 @@ echo ================================================================
 echo.
 echo This installer will:
 echo   1. Verify your Python environment
-echo   2. Install all required dependencies
+echo   2. Install all required dependencies (Core + PyTorch + OmniVoice)
 echo   3. Download the OmniVoice neural models to local storage
-echo   4. Automatically launch OmniVoice Studio
+echo   4. Automatically launch OmniVoice Local Studio
 echo.
 
 :: 1. Check Python
@@ -45,18 +45,33 @@ echo [*] Step 2/3: Checking & installing required Python packages...
 echo   [*] Updating pip if needed...
 %PY_CMD% -m pip install --upgrade pip >nul 2>nul
 
-echo   [*] Installing packages from requirements.txt...
+echo   [*] Installing core packages from requirements.txt...
 %PY_CMD% -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] Failed to install requirements from requirements.txt!
-    echo Please check your internet connection or run:
-    echo    %PY_CMD% -m pip install -r requirements.txt
-    echo.
+    echo Please check your internet connection and try again.
     pause
     exit /b 1
 )
 echo   ✓ Core packages installed successfully!
+echo.
+
+echo   [*] Checking PyTorch & OmniVoice neural engine for local free TTS...
+%PY_CMD% -c "import torch, omnivoice" >nul 2>nul
+if %errorlevel% neq 0 (
+    echo   [*] Installing local neural engine dependencies (PyTorch & OmniVoice)...
+    %PY_CMD% -m pip install -r requirements-local.txt
+    if !errorlevel! neq 0 (
+        echo.
+        echo [WARNING] PyTorch installation note: PyTorch can also be installed later.
+        echo Modal Cloud GPU synthesis will remain available.
+    ) else (
+        echo   ✓ Local neural engine installed successfully!
+    )
+) else (
+    echo   ✓ PyTorch & OmniVoice are already installed!
+)
 echo.
 
 :: 3. Download models to local storage

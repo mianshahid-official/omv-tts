@@ -1,6 +1,5 @@
 """
 OmniVoice Studio - Modal Cloud T4 GPU Deployment
-Owner: joybenny3333
 Features:
 - NVIDIA T4 GPU Acceleration (3-5s synthesis for full paragraphs)
 - k2-fsa/OmniVoice Zero-Shot Cloning & Voice Design

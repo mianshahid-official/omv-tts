@@ -832,7 +832,10 @@ async def open_folder_get(folder: str = Query(...)):
 async def on_startup():
     """Warms up the OmniVoice model in a background thread at startup with live progress."""
     import threading
-    threading.Thread(target=omnivoice_engine.preload_model, daemon=True).start()
+    if omnivoice_engine and hasattr(omnivoice_engine, "preload_model"):
+        threading.Thread(target=omnivoice_engine.preload_model, daemon=True).start()
+    else:
+        print("[OmniVoice] Notice: Local neural engine not available on startup (PyTorch not installed). Modal Cloud GPU synthesis remains active.")
 
 
 @app.get("/api/audio/{subpath:path}")
